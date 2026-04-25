@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { sendUsdcTransfer, buildExplorerUrl } from "@/lib/circle";
 import { getServerSupabase } from "@/lib/supabase";
 import type { PurchaseReceipt } from "@/lib/types";
@@ -104,6 +105,33 @@ export async function POST(req: Request) {
       console.error("[purchase] supabase unavailable:", dbErr);
     }
 
+    // Mint a sandbox access token tied to this purchase. If the insert
+    // fails we still return the receipt — the on-chain tx is the source
+    // of truth — but we surface the DB error in logs.
+    const accessToken = randomBytes(24).toString("hex");
+    let mintedToken: string | undefined;
+    let mintedCallsRemaining: number | undefined;
+    try {
+      const supabase = getServerSupabase();
+      const { error: tokenErr } = await supabase.from("access_tokens").insert({
+        token: accessToken,
+        provider_id: providerId,
+        tx_hash: transfer.txHash,
+        calls_remaining: tierUnits,
+        total_calls: tierUnits,
+      });
+      if (tokenErr) {
+        // eslint-disable-next-line no-console
+        console.error("[purchase] access_tokens insert failed:", tokenErr);
+      } else {
+        mintedToken = accessToken;
+        mintedCallsRemaining = tierUnits;
+      }
+    } catch (dbErr) {
+      // eslint-disable-next-line no-console
+      console.error("[purchase] access_tokens unavailable:", dbErr);
+    }
+
     const receipt: PurchaseReceipt = {
       txHash: transfer.txHash,
       explorerUrl,
@@ -111,6 +139,8 @@ export async function POST(req: Request) {
       timestamp,
       providerId,
       tierUnits,
+      accessToken: mintedToken,
+      callsRemaining: mintedCallsRemaining,
     };
     return NextResponse.json(receipt);
   } catch (err) {

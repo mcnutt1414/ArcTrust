@@ -31,4 +31,14 @@ export type PurchaseReceipt = {
   timestamp: string;
   providerId: string;
   tierUnits: number;
+  accessToken?: string;
+  callsRemaining?: number;
+};
+
+export type SandboxResponse = {
+  providerId: string;
+  status: number;
+  latencyMs: number;
+  data: unknown;
+  callsRemaining: number;
 };

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { PROVIDERS_SEED } from "@/lib/providers-seed";
+import { getServerSupabase } from "@/lib/supabase";
+import type { Provider } from "@/lib/types";
+import { BalanceBar } from "./_components/BalanceBar";
 import { DirectoryControls } from "./_components/DirectoryControls";
+import { Ticker } from "./_components/Ticker";
 
 export const metadata = {
   title: "Providers — ArcTrust",
@@ -8,9 +12,77 @@ export const metadata = {
     "Browse trustworthy API providers on Arc. Bulk-buy volume = market-driven reputation.",
 };
 
-export default function ProvidersPage() {
+// Always render fresh so live counts reflect new purchases.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type LiveCounts = Record<string, number>;
+
+async function fetchLiveCounts(): Promise<LiveCounts> {
+  try {
+    const supabase = getServerSupabase();
+    const sinceIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data, error } = await supabase
+      .from("purchases")
+      .select("provider_id, buyer_address")
+      .gte("created_at", sinceIso);
+
+    if (error || !data) return {};
+
+    const distinctBuyers = new Map<string, Set<string>>();
+    const totalRows = new Map<string, number>();
+
+    for (const row of data) {
+      const pid = (row.provider_id as string) ?? "";
+      if (!pid) continue;
+      const addr = (row.buyer_address as string | null) ?? null;
+      totalRows.set(pid, (totalRows.get(pid) ?? 0) + 1);
+      if (addr) {
+        let set = distinctBuyers.get(pid);
+        if (!set) {
+          set = new Set<string>();
+          distinctBuyers.set(pid, set);
+        }
+        set.add(addr.toLowerCase());
+      }
+    }
+
+    const counts: LiveCounts = {};
+    const allPids = new Set<string>([
+      ...distinctBuyers.keys(),
+      ...totalRows.keys(),
+    ]);
+    for (const pid of allPids) {
+      const distinct = distinctBuyers.get(pid)?.size ?? 0;
+      const total = totalRows.get(pid) ?? 0;
+      counts[pid] = distinct > 0 ? distinct : total;
+    }
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
+export default async function ProvidersPage() {
+  const liveCounts = await fetchLiveCounts();
+
+  const providers: Provider[] = PROVIDERS_SEED.map((p) => ({
+    ...p,
+    bulkBuyersThisMonth: p.bulkBuyersThisMonth + (liveCounts[p.id] ?? 0),
+  }));
+
+  const providerNames: Record<string, string> = Object.fromEntries(
+    PROVIDERS_SEED.map((p) => [p.id, p.name]),
+  );
+
   return (
     <main className="relative min-h-screen bg-arc-bg bg-arc-gradient">
+      <Ticker providerNames={providerNames} />
+      <BalanceBar />
+
       <div className="mx-auto max-w-6xl px-6 py-10">
         <nav className="text-sm text-arc-muted">
           <Link href="/" className="hover:text-arc-text">
@@ -40,7 +112,7 @@ export default function ProvidersPage() {
         </header>
 
         <section className="mt-8">
-          <DirectoryControls providers={PROVIDERS_SEED} />
+          <DirectoryControls providers={providers} />
         </section>
       </div>
     </main>
