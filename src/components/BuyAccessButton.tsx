@@ -6,6 +6,7 @@ import type {
   PurchaseReceipt,
   SandboxResponse,
 } from "@/lib/types";
+import { SandboxResponseView } from "@/app/providers/_components/SandboxResponseView";
 
 type Status = "idle" | "pending" | "success" | "error";
 type SandboxStatus = "idle" | "calling" | "ok" | "error";
@@ -170,10 +171,8 @@ export function BuyAccessButton(props: BuyAccessButtonProps) {
             </button>
 
             {sandboxStatus === "ok" && sandboxResponse ? (
-              <div className="flex flex-col gap-1">
-                <pre className="max-h-80 overflow-auto rounded-md border border-arc-border bg-arc-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-arc-text">
-                  {JSON.stringify(sandboxResponse.data, null, 2)}
-                </pre>
+              <div className="flex flex-col gap-2">
+                <SandboxResponseView response={sandboxResponse} />
                 <p className="text-xs text-arc-muted">
                   Status {sandboxResponse.status} · {sandboxResponse.latencyMs}
                   ms · {sandboxResponse.callsRemaining} calls left
