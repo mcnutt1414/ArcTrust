@@ -23,7 +23,6 @@ import {
   initiateDeveloperControlledWalletsClient,
   type Blockchain,
   type CircleDeveloperControlledWalletsClient,
-  type TokenBlockchain,
 } from "@circle-fin/developer-controlled-wallets";
 
 /** Default blockchain id for Arc testnet. Override via CIRCLE_ARC_BLOCKCHAIN. */
@@ -201,17 +200,19 @@ export async function sendUsdcTransfer(params: {
   const client = getCircleClient();
   const blockchain = getArcBlockchain();
 
-  // Use tokenAddress + blockchain (the SDK supports either tokenId or
-  // tokenAddress+blockchain). Arc testnet USDC is at the well-known address.
+  // The current SDK infers the transfer chain from walletId. Preserve the
+  // explicit Arc-chain check before any transaction can be created.
+  const sender = await client.getWallet({ id: senderWalletId });
+  if (sender.data?.wallet?.blockchain !== blockchain) {
+    throw new Error("Sender wallet blockchain does not match the configured Arc blockchain");
+  }
+
+  // Arc testnet USDC is at the well-known address.
   const createRes = await client.createTransaction({
     walletId: senderWalletId,
     destinationAddress: params.destinationAddress,
     amount: [params.amountUsdc.toString()],
     tokenAddress: ARC_TESTNET_USDC_ADDRESS,
-    // The SDK's TokenBlockchain union doesn't yet include ARC-TESTNET in
-    // v7.1.0, so we cast through unknown. The Circle API accepts the
-    // string at runtime.
-    blockchain: blockchain as unknown as TokenBlockchain,
     fee: { type: "level", config: { feeLevel: "MEDIUM" } },
     refId: params.refId,
   });
